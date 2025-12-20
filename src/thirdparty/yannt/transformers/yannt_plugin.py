@@ -30,7 +30,7 @@ def register_yannt_transformers(subparsers):
 
 
 def transformers_list(args):
-    from thirdparty.yannt.transformers import TransformersModelFactory
+    from thirdparty.yannt.transformers.lib import TransformersModelFactory
 
     print("Indexing all of the transformer types available. (Takes a moment.)")
     factory = TransformersModelFactory()
@@ -50,7 +50,7 @@ def transformers_list(args):
 
 
 def transformers_create(args):
-    from thirdparty.yannt.transformers import TransformersModelFactory
+    from thirdparty.yannt.transformers.lib import TransformersModelFactory
     import os
 
     print("Indexing all of the transformer types available. (Takes a moment.)")

@@ -9,6 +9,11 @@ description = "Transformers CLI"
 # Note: No idea the real version required at this time.
 requires-python = ">=3.11"
 
+dependencies = [
+    "torch",
+    "transformers",
+]
+
 [tool.setuptools.packages.find]
 where = ["src"]
 namespaces = true
