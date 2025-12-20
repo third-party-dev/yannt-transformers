@@ -1,0 +1,19 @@
+[build-system]
+requires = ["setuptools>=61.0", "wheel"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "thirdparty-yannt-transformers"
+version = "0.0.1"
+description = "Transformers CLI"
+# Note: No idea the real version required at this time.
+requires-python = ">=3.11"
+
+[tool.setuptools.packages.find]
+where = ["src"]
+namespaces = true
+
+[project.entry-points."yannt_command"]
+# Register pparse as a yannt subcommand
+transformers = "thirdparty.yannt.transformers.yannt_plugin:register_yannt_transformers"
+
