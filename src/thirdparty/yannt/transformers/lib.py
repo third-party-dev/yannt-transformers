@@ -1,6 +1,7 @@
 
 # TODO: Feels wrong to have this in the pparse namespace. But its the only user for now.
 
+print("Loading PyTorch and Transformers.")
 try:
     import torch
 except:
