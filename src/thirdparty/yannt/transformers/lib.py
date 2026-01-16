@@ -102,6 +102,7 @@ class TransformersModelFactory:
                 try:
                     type_name = automodel_cfg.model_type
                     cfg_name = automodel_cfg.__name__
+                    # ! BUG: Not working in py3.9
                     arch_name = automodel_class._model_mapping[automodel_cfg].__name__
                 except AttributeError:
                     continue

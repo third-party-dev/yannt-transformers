@@ -38,6 +38,7 @@ def register_yannt_transformers(subparsers):
     transformers_create_parser.add_argument(
         "--safetensors_path", dest="safetensors_path", default=""
     )
+    transformers_create_parser.add_argument("--onnx_path", dest="onnx_path", default="")
     transformers_create_parser.add_argument(
         "--max_shard", dest="max_shard", default="2147483648"
     )
