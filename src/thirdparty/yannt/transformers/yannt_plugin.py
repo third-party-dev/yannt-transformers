@@ -54,6 +54,7 @@ def register_yannt_transformers(subparsers):
     transformers_graph_parser.add_argument("--model", dest="model_name", required=True)
     graph_choices = ["graphviz", "human_ir", "compiler_ir", "nodes", "drawer", "schema", "coverage"]
     transformers_graph_parser.add_argument("--as", choices=graph_choices, default="ir", dest="graph_as")
+    transformers_graph_parser.add_argument("--input", choices=["ones", "dumb"], default="ones", dest="inp_type")
     transformers_graph_parser.add_argument("--out", dest="output_path", default=None)
     transformers_graph_parser.set_defaults(func=transformers_graph)
 
@@ -174,6 +175,65 @@ def collapse_ranges(nums):
     return result
 
 
+import torch
+from transformers import AutoModel
+
+# Note: This function originally from GPT, but reviewed and massaged. (Not exhaustively verified.)
+def generate_dummy_inputs(model, batch_size=None, seq_len=None, image_size=None):
+    # TODO: Consider checking max_position_embedding to validate seq_len
+
+    config = model.config
+    input_kwargs = {}
+
+    # --- generate batch_size and seq_len ---
+    batch_size = batch_size or 1
+    if hasattr(config, "max_position_embeddings"):
+        seq_len = seq_len or min(16, config.max_position_embeddings)
+    elif hasattr(config, "n_positions"):
+        seq_len = seq_len or min(16, config.n_positions)
+    else:
+        seq_len = seq_len or 16
+
+
+    # --- Text Models ---
+    # tokens
+    if hasattr(config, "vocab_size"):
+        input_kwargs["input_ids"] = torch.randint(0, config.vocab_size, (batch_size, seq_len), dtype=torch.long)
+
+    # attention_mask
+    if hasattr(config, "hidden_size") and "input_ids" in input_kwargs:
+        input_kwargs["attention_mask"] = torch.ones(batch_size, seq_len, dtype=torch.long)
+
+    # token_type_ids
+    if getattr(config, "type_vocab_size", None) is not None and "input_ids" in input_kwargs:
+        input_kwargs["token_type_ids"] = torch.zeros(batch_size, seq_len, dtype=torch.long)
+
+    # --- Vision / Image Models ---
+    if hasattr(config, "num_channels") or hasattr(config, "image_size"):
+        default_channels = 3
+        default_height = 256
+        deafult_width = 256
+        channels = getattr(config, "num_channels", default_channels)
+        height = getattr(config, "image_size", image_size[1] if image_size else default_height)
+        width = getattr(config, "image_size", image_size[2] if image_size else default_width)
+        input_kwargs["pixel_values"] = torch.randn(batch_size, channels, height, width)
+
+    # --- Audio / speech models ---
+    if getattr(config, "num_mel_bins", None) is not None:
+        mel_bins = config.num_mel_bins
+        input_kwargs["input_values"] = torch.randn(batch_size, seq_len, mel_bins)
+
+    # --- Misc ---
+    if getattr(config, "num_labels", None) is not None:
+        input_kwargs["labels"] = torch.zeros(batch_size, dtype=torch.long)
+
+    # Convert to tuple for positional arguments
+    # Note: This feels janky.
+    input_args = tuple(input_kwargs.values())
+    #return input_args, input_kwargs
+    return input_args
+
+
 def transformers_graph(args):
     import os
     import torch
@@ -181,10 +241,13 @@ def transformers_graph(args):
     import transformers
 
     tmodel = _transformers_build_model(args)
+
     input_args = (
         torch.ones(1, 16, dtype=torch.long),  # input_ids
         torch.ones(1, 16, dtype=torch.long),  # attention_mask
     )
+    if args.inp_type == "dumb":
+        input_args = generate_dummy_inputs(tmodel.model)
 
     # Note: Janky, but good enough for now.
     src_path = os.path.join(os.path.dirname(transformers.__file__), "models", tmodel.model_type)
@@ -211,6 +274,7 @@ def transformers_graph(args):
     # yannt transformers graph --model gptj --type AutoModelForCausalLM --as nodes
 
     # Working Examples:
+    # yannt transformers graph --model bert --type AutoModelForMaskedLM --as coverage
     # yannt transformers graph --model bert --type AutoModelForMaskedLM --as human_ir
     # yannt transformers graph --model bert --type AutoModelForMaskedLM --as compiler_ir
     # yannt transformers graph --model bert --type AutoModelForMaskedLM --as nodes
