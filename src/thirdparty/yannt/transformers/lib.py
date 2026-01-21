@@ -1,6 +1,10 @@
-# TODO: Feels wrong to have this in the pparse namespace. But its the only user for now.
+import sys
 
-print("Loading PyTorch and Transformers.")
+import warnings
+#warnings.filterwarnings("ignore", message="Config not found for parakeet.*")
+warnings.filterwarnings("ignore", module="parakeet")
+
+print("Loading PyTorch and Transformers.", file=sys.stderr)
 try:
     import torch
 except:
@@ -14,7 +18,10 @@ except:
 
 import transformers
 from transformers import GPT2LMHeadModel, GPT2Tokenizer
+from transformers import AutoTokenizer
 
+import logging
+logging.getLogger("parakeet").setLevel(logging.ERROR)
 
 class TransformersModel:
     def __init__(self, model=None, class_name=None, model_type=None):
@@ -52,26 +59,42 @@ class TransformersModel:
         except Exception as e:
             print(f"Torch script save error: {e}")
 
-    def save_torch_onnx(self, model_fpath):
+    def save_torch_onnx(self, model_fpath, model_name):
         try:
-            model = GPT2LMHeadModel.from_pretrained("gpt2")
-            tokenizer = GPT2Tokenizer.from_pretrained("gpt2")
-            dummy_text = "Hello, this is a test"
-            inputs = tokenizer(dummy_text, return_tensors="pt")
-            input_ids = inputs["input_ids"]
-            model.config.use_cache = False
+            tokenizer = AutoTokenizer.from_pretrained("bert-base-uncased") #self.model_type) #, use_fast=True) # local_files_only=True,
+            # tokenizer = AutoTokenizer.from_pretrained("./my_tokenizer", local_files_only=True)
+            inputs = tokenizer("Hello, this is a test", return_tensors="pt")
+            self.model.config.use_cache = False
+            self.model.config.torchscript = True # ??!??
             torch.onnx.export(
-                model,
-                input_ids,
-                f"{model_fpath}.onnx",
+                self.model,
+                (inputs["input_ids"], inputs["attention_mask"]), # input_ids,
+                f"{model_fpath}/{model_name}.onnx",
                 input_names=["input_ids"],
                 output_names=["logits"],
                 dynamic_axes={
                     "input_ids": {0: "batch_size", 1: "sequence_length"},
                     "logits": {0: "batch_size", 1: "sequence_length"},
                 },
-                opset_version=14,
+                opset_version=17,
+                do_constant_folding=True,
             )
+            '''
+            torch.onnx.export(
+                model,
+                (inputs["input_ids"], inputs["attention_mask"]),
+                "gpt2_default_random.onnx",
+                input_names=["input_ids", "attention_mask"],
+                output_names=["logits"],
+                dynamic_axes={
+                    "input_ids": {0: "batch", 1: "seq"},
+                    "attention_mask": {0: "batch", 1: "seq"},
+                    "logits": {0: "batch", 1: "seq"},
+                },
+                opset_version=17,
+                do_constant_folding=True,
+            )
+            '''
         except Exception as e:
             print(f"Torch script save error: {e}")
 
@@ -86,6 +109,52 @@ class TransformersModel:
         except Exception as e:
             print(f"Torch traced save error: {e}")
 
+    # yannt transformers create --model bert --type AutoModelForMaskedLM --export_path outputs/bert-export
+    def save_export(self, model_fpath, model_name):
+        #input_ids = (torch.ones(1, 16, dtype=torch.long))
+        input_ids = (
+            torch.ones(1, 16, dtype=torch.long),  # input_ids
+            torch.ones(1, 16, dtype=torch.long),  # attention_mask
+        )
+        exported = torch.export.export(self.model, input_ids)
+
+        # print(exported.graph_module.print_readable())
+
+        # gm = exported.graph_module
+
+        # for node in gm.graph.nodes:
+        #     print(f"{'-' * 75}")
+        #     print(f"{node.name} ({node.op})")
+        #     print(f"  Inputs: {node.all_input_nodes}")
+        #     print(f"  Target: {node.target}")
+        #     print(f"  Args: {node.args} {node.kwargs}")
+        #     # print(
+        #     #     node.op,
+        #     #     node.target,
+        #     #     node.name,
+        #     #     node.args,
+        #     #     node.kwargs,
+        #     # )
+
+
+        '''
+        node.op:
+        - placeholder - model input
+        - call_function - functional op
+        - call_module - submodule call
+        - call_method - tensor method
+        - output - graph output
+        '''
+
+        # nodes = []
+        # edges = []
+
+        # for node in gm.graph.nodes:
+        #     nodes.append(node.name)
+        #     for input_node in node.all_input_nodes:
+        #         edges.append((input_node.name, node.name))
+
+        #breakpoint()
 
 class TransformersModelFactory:
     def __init__(self):
@@ -124,6 +193,8 @@ class TransformersModelFactory:
         tmodel = None
         automodel_class = getattr(transformers, automodel_class_name)
         try:
+            # CONSIDER: config = AutoConfig.from_pretrained(model_name)
+            # The above will allow predefined config without weights. (In theory.)
             cfg = transformers.AutoConfig.for_model(model_type=model_type)
             model = automodel_class.from_config(cfg)
             model.eval()  # We don't train here.

@@ -13,6 +13,7 @@ def register_yannt_transformers(subparsers):
     transformers_parser = subparsers.add_parser(
         "transformers", help="transformers command"
     )
+    transformers_parser.add_argument("--breakpoint", dest="breakpoint", action="store_true", default=False)
     # transformers_parser.add_argument("--breakpoint",
     #     dest="breakpoint",
     #     action="store_true",
@@ -39,10 +40,24 @@ def register_yannt_transformers(subparsers):
         "--safetensors_path", dest="safetensors_path", default=""
     )
     transformers_create_parser.add_argument("--onnx_path", dest="onnx_path", default="")
+    transformers_create_parser.add_argument("--export_path", dest="export_path", default="")
     transformers_create_parser.add_argument(
         "--max_shard", dest="max_shard", default="2147483648"
     )
     transformers_create_parser.set_defaults(func=transformers_create)
+
+
+    transformers_graph_parser = transformers_subparser.add_parser(
+        "graph", help="transformers create command"
+    )
+    transformers_graph_parser.add_argument("--type", dest="model_type", required=True)
+    transformers_graph_parser.add_argument("--model", dest="model_name", required=True)
+    graph_choices = ["graphviz", "human_ir", "compiler_ir", "nodes", "drawer", "schema", "coverage"]
+    transformers_graph_parser.add_argument("--as", choices=graph_choices, default="ir", dest="graph_as")
+    transformers_graph_parser.add_argument("--out", dest="output_path", default=None)
+    transformers_graph_parser.set_defaults(func=transformers_graph)
+
+
 
 
 def transformers_list(args):
@@ -65,12 +80,11 @@ def transformers_list(args):
         breakpoint()
 
 
-def transformers_create(args):
-    import os
-
+def _transformers_build_model(args):
+    import sys
     from thirdparty.yannt.transformers.lib import TransformersModelFactory
 
-    print("Indexing all of the transformer types available. (Takes a moment.)")
+    print("Indexing all of the transformer types available. (Takes a moment.)", file=sys.stderr)
     factory = TransformersModelFactory()
 
     if args.model_type not in factory.auto_model_combos:
@@ -83,6 +97,14 @@ def transformers_create(args):
 
     # combo = factory.auto_model_combos[args.model_type][args.model_name]
     tmodel = factory.reconstruct_model(args.model_type, args.model_name)
+
+    return tmodel
+
+
+def transformers_create(args):
+    import os
+
+    tmodel = _transformers_build_model(args)
 
     if len(args.safetensors_path) > 0:
         print("Serializing to safetensors.")
@@ -99,6 +121,146 @@ def transformers_create(args):
         tmodel.save_torch_state(
             args.pytorch_state_path, f"{args.model_name}-{args.model_type}"
         )
+
+    # yannt transformers create --model bert --type AutoModelForMaskedLM --onnx_path outputs/bert-onnx
+    if len(args.onnx_path) > 0:
+        print("Serializing model state to onnx.")
+        if not os.path.exists(args.onnx_path):
+            os.makedirs(args.onnx_path, exist_ok=True)
+        tmodel.save_torch_onnx(
+            args.onnx_path, f"{args.model_name}-{args.model_type}"
+        )
+
+    # yannt transformers create --model bert --type AutoModelForMaskedLM --onnx_path outputs/bert-onnx
+    if len(args.export_path) > 0:
+        print("Serializing model state to Export IR.")
+        if not os.path.exists(args.export_path):
+            os.makedirs(args.export_path, exist_ok=True)
+        tmodel.save_export(
+            args.export_path, f"{args.model_name}-{args.model_type}"
+        )
+
+    if hasattr(args, "breakpoint") and args.breakpoint:
+        print(f"Locals: {list(locals().keys())}")
+        breakpoint()
+
+
+
+def collapse_ranges(nums):
+    if not nums:
+        return []
+
+    nums = sorted(nums)  # make sure list is sorted
+    result = []
+    start = prev = nums[0]
+
+    for n in nums[1:]:
+        if n == prev + 1:  # consecutive
+            prev = n
+        else:
+            # end of a consecutive run
+            if start == prev:
+                result.append(str(start))
+            else:
+                result.append(f"{start}-{prev}")
+            start = prev = n
+
+    # handle the last run
+    if start == prev:
+        result.append(str(start))
+    else:
+        result.append(f"{start}-{prev}")
+
+    return result
+
+
+def transformers_graph(args):
+    import os
+    import torch
+    import coverage
+    import transformers
+
+    tmodel = _transformers_build_model(args)
+    input_args = (
+        torch.ones(1, 16, dtype=torch.long),  # input_ids
+        torch.ones(1, 16, dtype=torch.long),  # attention_mask
+    )
+
+    # Note: Janky, but good enough for now.
+    src_path = os.path.join(os.path.dirname(transformers.__file__), "models", tmodel.model_type)
+    cov = coverage.Coverage(source=[src_path])
+    cov.start()
+
+    try:
+        exported = torch.export.export(tmodel.model, input_args)
+    except Exception as ex:
+        print(f"{'!' * 70}\n"
+              "PyTorch export failed. This is often due to incompatible python\n"
+              "contructs implemented into the model code. You will likely need to\n"
+              "adjust your model or find a different strategy to use.\n\n"
+              f"Exception: {ex}\n"
+              f"{'!' * 70}")
+        # TODO: Add stacktrace when using --verbose
+        return
+
+    cov.stop()
+    cov.save()
+
+    # Failure Examples:
+    # yannt transformers graph --model gpt2 --type AutoModelForCausalLM --as nodes
+    # yannt transformers graph --model gptj --type AutoModelForCausalLM --as nodes
+
+    # Working Examples:
+    # yannt transformers graph --model bert --type AutoModelForMaskedLM --as human_ir
+    # yannt transformers graph --model bert --type AutoModelForMaskedLM --as compiler_ir
+    # yannt transformers graph --model bert --type AutoModelForMaskedLM --as nodes
+    # yannt transformers graph --model bert --type AutoModelForMaskedLM --as graphviz | dot -Tsvg -o outputs/bert-drawer/my-model.svg
+    # yannt transformers graph --model bert --type AutoModelForMaskedLM --as drawer --out outputs/bert-drawer/model.svg
+
+    if args.graph_as == "human_ir":
+        print(exported.graph_module.print_readable())
+
+    if args.graph_as == "compiler_ir":
+        print(exported.graph_module.graph.print_tabular())
+
+    if args.graph_as == "schema":
+        print(exported.graph_signature)
+
+    if args.graph_as == "nodes":
+        for node in exported.graph_module.graph.nodes:
+            print(f"{'-' * 75}")
+            print(f"{node.name} ({node.op})")
+            print(f"  Inputs: {node.all_input_nodes}")
+            print(f"  Target: {node.target}")
+            print(f"  Args: {node.args} {node.kwargs}")
+
+    if args.graph_as == "graphviz":
+        print("digraph G {")
+        for node in exported.graph_module.graph.nodes:
+            print(f'  "{node.name}" [label="{node.op}\\n{node.target}"];')
+            for inp in node.all_input_nodes:
+                print(f'  "{inp.name}" -> "{node.name}";')
+        print("}")
+
+    if args.graph_as == "drawer":
+        from torch.fx.passes.graph_drawer import FxGraphDrawer
+        drawer = FxGraphDrawer(exported.graph_module, "exported_model")
+        if args.output_path:
+            dirname = os.path.dirname(args.output_path)
+            if not os.path.exists(dirname):
+                os.makedirs(dirname, exist_ok=True)
+            drawer.get_dot_graph().write_svg(args.output_path)
+
+    if args.graph_as == "coverage":
+        data = cov.get_data()
+        for file in data.measured_files():
+            executed_lines = data.lines(file)         # set of executed line numbers
+            # missing_lines = data.missing_lines(file)  # set of missed line numbers
+            if len(executed_lines) > 0:
+                print(f"File: {file}")
+                print(f"  Executed lines: {collapse_ranges(sorted(executed_lines))}")
+
+        cov.report()
 
     if hasattr(args, "breakpoint") and args.breakpoint:
         print(f"Locals: {list(locals().keys())}")
