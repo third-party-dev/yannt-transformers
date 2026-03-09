@@ -1,34 +1,17 @@
-"""
-def register(subparsers):
-    p = subparsers.add_parser("foo", help="Foo command")
-    p.add_argument("--x", type=int, required=True)
-    p.set_defaults(func=run)
+import argparse
 
-def run(args):
-    print(args.x * 2)
-"""
+def main():
+    # Create parent parser
+    parser = argparse.ArgumentParser(prog="hft")
+    parser.add_argument("--breakpoint", dest="breakpoint", action="store_true", default=False)
+    subparsers = parser.add_subparsers(dest="hft_command", required=True)
 
-
-def register_yannt_transformers(subparsers):
-    transformers_parser = subparsers.add_parser(
-        "transformers", help="transformers command"
-    )
-    transformers_parser.add_argument("--breakpoint", dest="breakpoint", action="store_true", default=False)
-    # transformers_parser.add_argument("--breakpoint",
-    #     dest="breakpoint",
-    #     action="store_true",
-    #     help="breakpoint() after operation"
-    # )
-    transformers_subparser = transformers_parser.add_subparsers(
-        dest="transformers_command", required=True
-    )
-
-    transformers_list_parser = transformers_subparser.add_parser(
+    transformers_list_parser = subparsers.add_parser(
         "list", help="transformers list command"
     )
     transformers_list_parser.set_defaults(func=transformers_list)
 
-    transformers_create_parser = transformers_subparser.add_parser(
+    transformers_create_parser = subparsers.add_parser(
         "create", help="transformers create command"
     )
     transformers_create_parser.add_argument("--type", dest="model_type", required=True)
@@ -47,7 +30,7 @@ def register_yannt_transformers(subparsers):
     transformers_create_parser.set_defaults(func=transformers_create)
 
 
-    transformers_graph_parser = transformers_subparser.add_parser(
+    transformers_graph_parser = subparsers.add_parser(
         "graph", help="transformers create command"
     )
     transformers_graph_parser.add_argument("--type", dest="model_type", required=True)
@@ -58,7 +41,8 @@ def register_yannt_transformers(subparsers):
     transformers_graph_parser.add_argument("--out", dest="output_path", default=None)
     transformers_graph_parser.set_defaults(func=transformers_graph)
 
-
+    args = parser.parse_args()
+    args.func(args)
 
 
 def transformers_list(args):
@@ -175,11 +159,10 @@ def collapse_ranges(nums):
     return result
 
 
-import torch
-from transformers import AutoModel
-
 # Note: This function originally from GPT, but reviewed and massaged. (Not exhaustively verified.)
 def generate_dummy_inputs(model, batch_size=None, seq_len=None, image_size=None):
+    import torch
+    from transformers import AutoModel
     # TODO: Consider checking max_position_embedding to validate seq_len
 
     config = model.config

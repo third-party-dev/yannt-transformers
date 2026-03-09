@@ -162,6 +162,8 @@ class TransformersModelFactory:
         self.get_auto_model_combos()
 
     def get_auto_model_combos(self):
+        import torch
+        from transformers import AutoModel
         for automodel_class_name in dir(transformers):
             if not automodel_class_name.startswith("AutoModel"):
                 continue
@@ -175,7 +177,7 @@ class TransformersModelFactory:
                     arch_name = automodel_class._model_mapping[automodel_cfg].__name__
                 except AttributeError:
                     continue
-                except:
+                except Exception as e:
                     breakpoint()
 
                 if automodel_class_name not in self.auto_model_combos:
@@ -190,6 +192,8 @@ class TransformersModelFactory:
                 )
 
     def reconstruct_model(self, automodel_class_name, model_type):
+        import torch
+        from transformers import AutoModel
         tmodel = None
         automodel_class = getattr(transformers, automodel_class_name)
         try:
