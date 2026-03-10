@@ -16,9 +16,15 @@ def main():
     )
     transformers_create_parser.add_argument("--type", dest="model_type", required=True)
     transformers_create_parser.add_argument("--model", dest="model_name", required=True)
+    
     transformers_create_parser.add_argument(
-        "--pytorch_state_path", dest="pytorch_state_path", default=""
+        "--pytorch_path", dest="pytorch_path", default=""
     )
+
+    transformers_create_parser.add_argument(
+        "--pytorch_params_path", dest="pytorch_params_path", default=""
+    )
+
     transformers_create_parser.add_argument(
         "--safetensors_path", dest="safetensors_path", default=""
     )
@@ -92,43 +98,52 @@ def transformers_create(args):
     tmodel = _transformers_build_model(args)
 
     if len(args.safetensors_path) > 0:
-        print("Serializing to safetensors.")
+        print("Export params to safetensors.")
         if not os.path.exists(args.safetensors_path):
             os.makedirs(args.safetensors_path, exist_ok=True)
         tmodel.save_torch_safetensors(
             args.safetensors_path, max_shard=int(args.max_shard)
         )
 
-    if len(args.pytorch_state_path) > 0:
-        print("Serializing model state to pytorch.")
-        if not os.path.exists(args.pytorch_state_path):
-            os.makedirs(args.pytorch_state_path, exist_ok=True)
-        tmodel.save_torch_state(
-            args.pytorch_state_path, f"{args.model_name}-{args.model_type}"
+    if len(args.pytorch_path) > 0:
+        import torch
+        print("Exporting everything to pytorch.")
+        if not os.path.exists(args.pytorch_path):
+            os.makedirs(args.pytorch_path, exist_ok=True)
+        tmodel.save_torch_complete(
+            args.pytorch_path, f"{args.model_name}-{args.model_type}"
         )
 
-    # yannt transformers create --model bert --type AutoModelForMaskedLM --onnx_path outputs/bert-onnx
+    if len(args.pytorch_params_path) > 0:
+        print("Exporting params (state_dict) to pytorch.")
+        if not os.path.exists(args.pytorch_params_path):
+            os.makedirs(args.pytorch_params_path, exist_ok=True)
+        tmodel.save_torch_params(
+            args.pytorch_params_path, f"{args.model_name}-{args.model_type}"
+        )
+
+    # hft create --model bert --type AutoModelForMaskedLM --onnx_path outputs/bert-onnx
     if len(args.onnx_path) > 0:
-        print("Serializing model state to onnx.")
+        print("Exporting model to onnx.")
         if not os.path.exists(args.onnx_path):
             os.makedirs(args.onnx_path, exist_ok=True)
         tmodel.save_torch_onnx(
             args.onnx_path, f"{args.model_name}-{args.model_type}"
         )
 
-    # yannt transformers create --model bert --type AutoModelForMaskedLM --onnx_path outputs/bert-onnx
+    # hft create --model bert --type AutoModelForMaskedLM --onnx_path outputs/bert-onnx
     if len(args.export_path) > 0:
-        print("Serializing model state to Export IR.")
+        print("Exporting model to Export IR.")
         if not os.path.exists(args.export_path):
             os.makedirs(args.export_path, exist_ok=True)
         tmodel.save_export(
             args.export_path, f"{args.model_name}-{args.model_type}"
         )
 
+    # A place to stop for inspection.
     if hasattr(args, "breakpoint") and args.breakpoint:
         print(f"Locals: {list(locals().keys())}")
         breakpoint()
-
 
 
 def collapse_ranges(nums):
@@ -253,16 +268,16 @@ def transformers_graph(args):
     cov.save()
 
     # Failure Examples:
-    # yannt transformers graph --model gpt2 --type AutoModelForCausalLM --as nodes
-    # yannt transformers graph --model gptj --type AutoModelForCausalLM --as nodes
+    # hft graph --model gpt2 --type AutoModelForCausalLM --as nodes
+    # hft graph --model gptj --type AutoModelForCausalLM --as nodes
 
     # Working Examples:
-    # yannt transformers graph --model bert --type AutoModelForMaskedLM --as coverage
-    # yannt transformers graph --model bert --type AutoModelForMaskedLM --as human_ir
-    # yannt transformers graph --model bert --type AutoModelForMaskedLM --as compiler_ir
-    # yannt transformers graph --model bert --type AutoModelForMaskedLM --as nodes
-    # yannt transformers graph --model bert --type AutoModelForMaskedLM --as graphviz | dot -Tsvg -o outputs/bert-drawer/my-model.svg
-    # yannt transformers graph --model bert --type AutoModelForMaskedLM --as drawer --out outputs/bert-drawer/model.svg
+    # hft graph --model bert --type AutoModelForMaskedLM --as coverage
+    # hft graph --model bert --type AutoModelForMaskedLM --as human_ir
+    # hft graph --model bert --type AutoModelForMaskedLM --as compiler_ir
+    # hft graph --model bert --type AutoModelForMaskedLM --as nodes
+    # hft graph --model bert --type AutoModelForMaskedLM --as graphviz | dot -Tsvg -o outputs/bert-drawer/my-model.svg
+    # hft graph --model bert --type AutoModelForMaskedLM --as drawer --out outputs/bert-drawer/model.svg
 
     if args.graph_as == "human_ir":
         print(exported.graph_module.print_readable())

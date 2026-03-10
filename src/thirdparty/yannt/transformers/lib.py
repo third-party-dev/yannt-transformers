@@ -29,6 +29,7 @@ class TransformersModel:
         self.automodel_class_name = class_name
         self.model_type = model_type
 
+
     def save_torch_safetensors(self, model_fpath, max_shard=2147483648):
         try:
             max_shard
@@ -38,20 +39,47 @@ class TransformersModel:
         except Exception as e:
             print(f"Torch safetensors save error: {e}")
 
-    def save_torch_weights(self, model_fpath, with_arch=True):
+
+    # TODO: Consider a more deterministic model export structure? Convention?
+    # def save_torch_model(self, model_fpath, with_arch=True):
+    #     try:
+    #         params = {"model_state_dict": self.model.state_dict()}
+    #         if with_arch:
+    #             params["model_architecture"] = self.model
+    #         torch.save(params, f"{model_fpath}.pth")
+    #     except Exception as e:
+    #         print(f"Torch weights save error: {e}")
+
+
+    # TODO: Consider generating a checkpoint. Is there a convention?
+    # def save_torch_checkpoint(self, model_fpath, with_arch=True):
+    #     torch.save({
+    #         "epoch": epoch,
+    #         "model_state_dict": model.state_dict(),
+    #         "optimizer_state_dict": optimizer.state_dict(),
+    #         "loss": loss
+    #     }, "checkpoint.pt")
+
+
+    # "complete" saves the model architecture and the parameters
+    # Note: This is fragile and not recommended.
+    def save_torch_complete(self, model_fpath, model_name):
         try:
-            params = {"model_state_dict": self.model.state_dict()}
-            if with_arch:
-                params["model_architecture"] = self.model
-            torch.save(params, f"{model_fpath}.pth")
+            #params = {"model_state_dict": self.model.state_dict()}
+            #if with_arch:
+            #    params["model_architecture"] = self.model
+            torch.save(self.model, f"{model_fpath}/{model_name}.complete.pt")
         except Exception as e:
             print(f"Torch weights save error: {e}")
 
-    def save_torch_state(self, model_fpath, model_name):
+
+    # "params" saves only the state_dict() of the model.
+    def save_torch_params(self, model_fpath, model_name):
         try:
-            torch.save(self.model.state_dict(), f"{model_fpath}/{model_name}.pth")
+            torch.save(self.model.state_dict(), f"{model_fpath}/{model_name}.params.pt")
         except Exception as e:
             print(f"Torch state save error: {e}")
+
 
     def save_torch_script(self, model_fpath):
         try:
@@ -59,6 +87,8 @@ class TransformersModel:
         except Exception as e:
             print(f"Torch script save error: {e}")
 
+
+    # TODO: Make this generic.
     def save_torch_onnx(self, model_fpath, model_name):
         try:
             tokenizer = AutoTokenizer.from_pretrained("bert-base-uncased") #self.model_type) #, use_fast=True) # local_files_only=True,
@@ -98,6 +128,7 @@ class TransformersModel:
         except Exception as e:
             print(f"Torch script save error: {e}")
 
+
     def save_traced(self, model_fpath):
         try:
             example_input_ids = torch.randint(0, 50257, (1, 8))
@@ -108,6 +139,7 @@ class TransformersModel:
             traced.save(f"{model_fpath}.traced.pt")
         except Exception as e:
             print(f"Torch traced save error: {e}")
+
 
     # yannt transformers create --model bert --type AutoModelForMaskedLM --export_path outputs/bert-export
     def save_export(self, model_fpath, model_name):
@@ -156,6 +188,7 @@ class TransformersModel:
 
         #breakpoint()
 
+
 class TransformersModelFactory:
     def __init__(self):
         self.auto_model_combos = {}
@@ -176,6 +209,15 @@ class TransformersModelFactory:
                     # ! BUG: Not working in py3.9
                     arch_name = automodel_class._model_mapping[automodel_cfg].__name__
                 except AttributeError:
+                    continue
+                except ModuleNotFoundError as e:
+                    # Know to be triggered by:
+                    # Sam3Model,Sam3VideoModel, Sam3VisionModel, and Sam3ViTModel
+                    #print(e)
+                    continue
+                except ValueError as e:
+                    # Known to be triggered by: VoxtralRealtimeTextModel
+                    #print(e)
                     continue
                 except Exception as e:
                     breakpoint()
