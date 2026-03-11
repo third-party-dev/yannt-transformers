@@ -94,6 +94,7 @@ def _transformers_build_model(args):
 
 def transformers_create(args):
     import os
+    from pathlib import Path
 
     tmodel = _transformers_build_model(args)
 

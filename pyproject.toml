@@ -29,6 +29,6 @@ hft = "thirdparty.yannt.transformers.cli:main"
 
 
 ##### Obsolete/Deprecated as a yannt plugin #####
-[project.entry-points."yannt_command"]
-# Register pparse as a yannt subcommand
-transformers = "thirdparty.yannt.transformers.yannt_plugin:register_yannt_transformers"
+#[project.entry-points."yannt_command"]
+## Register pparse as a yannt subcommand
+#transformers = "thirdparty.yannt.transformers.yannt_plugin:register_yannt_transformers"
